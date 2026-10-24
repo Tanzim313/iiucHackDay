@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
+import NoticeIntake from "./NoticeIntake.jsx";
 
 const categoryIcons = {
   "পরীক্ষা": "✳",
@@ -16,7 +17,26 @@ function formatDate(value) {
 }
 
 function NoticeCard({ notice }) {
+  const [analysis, setAnalysis] = useState("");
+  const [analyzing, setAnalyzing] = useState(false);
+  const [analysisError, setAnalysisError] = useState("");
   const urgent = notice.priority === "high";
+
+  async function analyze() {
+    setAnalyzing(true);
+    setAnalysisError("");
+    try {
+      const response = await fetch(`/api/notices/${encodeURIComponent(notice.id)}/analyze`, { method: "POST" });
+      const data = await response.json();
+      if (!response.ok) throw new Error(data.error || "AI বিশ্লেষণ পাওয়া যায়নি।");
+      setAnalysis(data.analysis || "");
+    } catch (error) {
+      setAnalysisError(error.message || "AI সার্ভারের সঙ্গে সংযোগ করা যায়নি।");
+    } finally {
+      setAnalyzing(false);
+    }
+  }
+
   return (
     <article className="group rounded-2xl border border-[#e6ece7] bg-white p-5 shadow-[0_8px_28px_rgba(24,51,45,0.035)] transition hover:-translate-y-0.5 hover:border-[#c8ddd0] hover:shadow-[0_14px_35px_rgba(24,51,45,0.08)]">
       <div className="mb-4 flex items-start justify-between gap-4">
@@ -28,10 +48,23 @@ function NoticeCard({ notice }) {
       </div>
       <h3 className="text-[17px] font-bold leading-7 text-[#1a3830]">{notice.title}</h3>
       <p className="mt-2 line-clamp-2 text-sm leading-6 text-[#718078]">{notice.summary}</p>
+      {notice.analysis && <div className="mt-4 rounded-xl border border-[#e5eee7] bg-[#f8fbf8] p-3.5">
+        <p className="text-[10px] font-bold uppercase tracking-[.14em] text-[#71927b]">AI extraction</p>
+        {notice.analysis.key_deadlines?.length > 0 && <div className="mt-2 flex flex-wrap gap-1.5">{notice.analysis.key_deadlines.slice(0, 3).map((item, index) => <span key={`${index}-${item}`} className="rounded-full bg-white px-2.5 py-1 text-[10px] font-semibold text-[#63806c] ring-1 ring-[#e4ece5]">◷ {item}</span>)}</div>}
+        {notice.analysis.action_items?.length > 0 && <p className="mt-2 text-xs leading-5 text-[#728277]">করণীয়: {notice.analysis.action_items[0]}</p>}
+      </div>}
       <div className="mt-5 flex items-center justify-between border-t border-[#edf1ee] pt-4">
         <span className="truncate pr-3 text-xs font-medium text-[#8a9b91]">{notice.department}</span>
         <span className="shrink-0 text-[11px] font-semibold tracking-wide text-[#a2afa7]">{notice.id}</span>
       </div>
+      <button onClick={analyze} disabled={analyzing} className="mt-4 inline-flex items-center gap-2 rounded-lg bg-[#edf5ef] px-3 py-2 text-xs font-bold text-[#357251] transition hover:bg-[#deeee2] disabled:cursor-wait disabled:opacity-60">
+        <span>✧</span>{analyzing ? "বিশ্লেষণ হচ্ছে…" : analysis ? "আবার বিশ্লেষণ" : "AI দিয়ে বিশ্লেষণ"}
+      </button>
+      {analysisError && <p className="mt-3 rounded-lg bg-[#fff4ef] px-3 py-2 text-xs leading-5 text-[#a55335]">{analysisError}</p>}
+      {analysis && <div className="mt-4 rounded-xl border border-[#e3eee5] bg-[#f8fbf8] p-4">
+        <p className="mb-2 text-[10px] font-bold uppercase tracking-[.14em] text-[#699477]">Gemma · নোটিশ বিশ্লেষণ</p>
+        <p className="whitespace-pre-wrap text-xs leading-6 text-[#52675a]">{analysis.replace(/\*\*/g, "")}</p>
+      </div>}
     </article>
   );
 }
@@ -50,6 +83,7 @@ function App() {
   ]);
   const [question, setQuestion] = useState("");
   const [asking, setAsking] = useState(false);
+  const [intakeOpen, setIntakeOpen] = useState(false);
 
   useEffect(() => {
     const controller = new AbortController();
@@ -113,6 +147,14 @@ function App() {
 
   const urgentCount = notices.filter((notice) => notice.priority === "high").length;
 
+  function handleNoticeSaved(notice) {
+    setNotices((current) => [notice, ...current]);
+    setCategories((current) => [...new Set([...current, notice.category])].sort());
+    setActiveCategory("সব নোটিশ");
+    setSection("notices");
+    setIntakeOpen(false);
+  }
+
   return (
     <div className="min-h-screen bg-[#f5f7f5] text-[#18332d]">
       <div className="mx-auto flex min-h-screen max-w-[1600px]">
@@ -161,6 +203,7 @@ function App() {
             </div>
             <div className="hidden text-sm text-[#84938a] lg:block">শিক্ষার্থী পোর্টাল <span className="mx-2 text-[#c5cec8]">/</span> <span className="font-semibold text-[#435b4e]">{section === "notices" ? "নোটিশ বোর্ড" : "AI সহকারী"}</span></div>
             <div className="flex w-full items-center gap-3 sm:w-auto">
+              <button onClick={() => setIntakeOpen(true)} className="inline-flex shrink-0 items-center gap-2 rounded-xl bg-[#246348] px-3 py-2.5 text-xs font-bold text-white shadow-sm transition hover:bg-[#1d543d] sm:px-4 sm:text-sm"><span className="text-base">+</span><span className="hidden sm:inline">নোটিশ যোগ করুন</span><span className="sr-only sm:hidden">নোটিশ যোগ করুন</span></button>
               <label className="flex min-w-0 flex-1 items-center gap-2 rounded-xl border border-[#e4eae5] bg-white px-3.5 py-2.5 text-[#94a198] shadow-sm sm:w-[260px] sm:flex-none">
                 <span>⌕</span>
                 <input value={search} onChange={(event) => setSearch(event.target.value)} placeholder="নোটিশ খুঁজুন..." className="w-full bg-transparent text-sm text-[#30483c] outline-none placeholder:text-[#a4afa8]" aria-label="নোটিশ খুঁজুন" />
@@ -265,9 +308,11 @@ function App() {
           </div>
           <footer className="mt-10 border-t border-[#e7ece8] py-5 text-center text-[11px] text-[#9aa69e]">Campus Notice Navigator <span className="mx-1">·</span> ক্যাম্পাসের তথ্য, হাতের কাছে</footer>
         </main>
+        <NoticeIntake open={intakeOpen} categories={categories} onClose={() => setIntakeOpen(false)} onSaved={handleNoticeSaved} />
       </div>
     </div>
   );
 }
 
 export default App;
+import "./StudyPlanner.jsx";
